@@ -1,0 +1,14 @@
+{
+  "name": "@markethub/shared",
+  "version": "1.0.0",
+  "description": "Shared types, DTO contracts, enums and utilities for MarketHub",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "watch": "tsc -w"
+  },
+  "devDependencies": {
+    "typescript": "^5.3.3"
+  }
+}

@@ -1,0 +1,490 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  CUSTOMER
+  VENDOR
+  DELIVERY_PARTNER
+  ADMIN
+}
+
+enum AccountStatus {
+  ACTIVE
+  SUSPENDED
+  DEACTIVATED
+}
+
+enum VendorStatus {
+  PENDING_APPROVAL
+  APPROVED
+  REJECTED
+  SUSPENDED
+}
+
+enum DeliveryStatusRole {
+  AVAILABLE
+  BUSY
+  OFFLINE
+}
+
+enum ProductStatus {
+  DRAFT
+  ACTIVE
+  ARCHIVED
+  SUSPENDED_BY_ADMIN
+}
+
+enum InventoryChangeType {
+  RESTOCK
+  RESERVATION
+  SALE
+  RELEASE
+  ADJUSTMENT
+  RETURN
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+  FAILED
+  REFUNDED
+}
+
+enum OrderOverallStatus {
+  PLACED
+  PROCESSING
+  PARTIALLY_SHIPPED
+  SHIPPED
+  DELIVERED
+  CANCELLED
+}
+
+enum VendorOrderStatus {
+  PENDING_CONFIRMATION
+  CONFIRMED
+  PREPARING
+  READY_FOR_PICKUP
+  PICKED_UP
+  IN_TRANSIT
+  DELIVERED
+  CANCELLED
+}
+
+enum DeliveryState {
+  PENDING_ASSIGNMENT
+  ASSIGNED
+  PICKED_UP
+  IN_TRANSIT
+  OUT_FOR_DELIVERY
+  DELIVERED
+  FAILED_ATTEMPT
+  CANCELLED
+}
+
+model User {
+  id              String                  @id @default(cuid())
+  email           String                  @unique
+  passwordHash    String
+  role            Role                    @default(CUSTOMER)
+  status          AccountStatus           @default(ACTIVE)
+  name            String
+  phone           String?
+  createdAt       DateTime                @default(now())
+  updatedAt       DateTime                @updatedAt
+
+  addresses       Address[]
+  vendorProfile   Vendor?
+  deliveryProfile DeliveryPartnerProfile?
+  refreshTokens   RefreshToken[]
+  orders          Order[]
+  reviews         Review[]
+  auditLogs       AuditLog[]
+  carts           Cart[]
+
+  @@map("users")
+}
+
+model RefreshToken {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String    @unique
+  expiresAt DateTime
+  revokedAt DateTime?
+  ipAddress String?
+  userAgent String?
+  createdAt DateTime  @default(now())
+
+  @@index([userId])
+  @@map("refresh_tokens")
+}
+
+model Address {
+  id                String   @id @default(cuid())
+  userId            String
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  recipientName     String
+  phone             String
+  streetLine1       String
+  streetLine2       String?
+  city              String
+  state             String
+  postalCode        String
+  country           String   @default("India")
+  isDefaultShipping Boolean  @default(false)
+  isDefaultBilling  Boolean  @default(false)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@index([userId])
+  @@map("addresses")
+}
+
+model Vendor {
+  id                 String        @id @default(cuid())
+  userId             String        @unique
+  user               User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  storeName          String        @unique
+  slug               String        @unique
+  description        String?
+  logoUrl            String?
+  bannerUrl          String?
+  status             VendorStatus  @default(PENDING_APPROVAL)
+  commissionRateBps  Int           @default(1000) // 10.00% default
+  businessEmail      String
+  businessPhone      String
+  bankAccountNumber  String?
+  bankIfscCode       String?
+  rejectionReason    String?
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
+
+  products           Product[]
+  vendorOrders       VendorOrder[]
+
+  @@map("vendors")
+}
+
+model DeliveryPartnerProfile {
+  id            String             @id @default(cuid())
+  userId        String             @unique
+  user          User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  vehicleType   String             @default("BIKE")
+  licenseNumber String             @unique
+  status        DeliveryStatusRole @default(AVAILABLE)
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
+
+  deliveries    Delivery[]
+
+  @@map("delivery_partner_profiles")
+}
+
+model Category {
+  id          String     @id @default(cuid())
+  name        String
+  slug        String     @unique
+  description String?
+  imageUrl    String?
+  parentId    String?
+  parent      Category?  @relation("CategoryHierarchy", fields: [parentId], references: [id], onDelete: SetNull)
+  children    Category[] @relation("CategoryHierarchy")
+  isActive    Boolean    @default(true)
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  products    Product[]
+
+  @@map("categories")
+}
+
+model Product {
+  id                  String        @id @default(cuid())
+  vendorId            String
+  vendor              Vendor        @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+  categoryId          String
+  category            Category      @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  title               String
+  slug                String        @unique
+  description         String
+  priceMinor          Int           // Minor unit (paise)
+  compareAtPriceMinor Int?
+  sku                 String        @unique
+  status              ProductStatus @default(ACTIVE)
+  isFeatured          Boolean       @default(false)
+  createdAt           DateTime      @default(now())
+  updatedAt           DateTime      @updatedAt
+
+  images              ProductImage[]
+  inventory           Inventory?
+  cartItems           CartItem[]
+  orderItems          OrderItem[]
+  reviews             Review[]
+
+  @@index([vendorId])
+  @@index([categoryId])
+  @@index([status, priceMinor])
+  @@map("products")
+}
+
+model ProductImage {
+  id        String   @id @default(cuid())
+  productId String
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  url       String
+  key       String
+  altText   String?
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+
+  @@index([productId])
+  @@map("product_images")
+}
+
+model Inventory {
+  id                String              @id @default(cuid())
+  productId         String              @unique
+  product           Product             @relation(fields: [productId], references: [id], onDelete: Cascade)
+  quantity          Int                 @default(0)
+  reservedQuantity  Int                 @default(0)
+  lowStockThreshold Int                 @default(5)
+  updatedAt         DateTime            @updatedAt
+
+  movements         InventoryMovement[]
+
+  @@map("inventories")
+}
+
+model InventoryMovement {
+  id            String              @id @default(cuid())
+  inventoryId   String
+  inventory     Inventory           @relation(fields: [inventoryId], references: [id], onDelete: Cascade)
+  changeType    InventoryChangeType
+  quantityDelta Int
+  balanceAfter  Int
+  referenceType String?
+  referenceId   String?
+  reason        String?
+  createdAt     DateTime            @default(now())
+
+  @@index([inventoryId])
+  @@map("inventory_movements")
+}
+
+model Cart {
+  id           String     @id @default(cuid())
+  userId       String?    @unique
+  user         User?      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  sessionToken String?    @unique
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  items        CartItem[]
+
+  @@map("carts")
+}
+
+model CartItem {
+  id        String   @id @default(cuid())
+  cartId    String
+  cart      Cart     @relation(fields: [cartId], references: [id], onDelete: Cascade)
+  productId String
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  quantity  Int      @default(1)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([cartId, productId])
+  @@map("cart_items")
+}
+
+model Order {
+  id                      String             @id @default(cuid())
+  orderNumber             String             @unique
+  customerId              String
+  customer                User               @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  shippingAddressSnapshot Json
+  billingAddressSnapshot  Json
+  totalAmountMinor        Int
+  itemsSubtotalMinor      Int
+  shippingFeeMinor        Int                @default(0)
+  discountMinor           Int                @default(0)
+  paymentStatus           PaymentStatus      @default(PENDING)
+  overallStatus           OrderOverallStatus @default(PLACED)
+  paymentMethod           String             @default("MOCK_PAYMENT")
+  idempotencyKey          String?            @unique
+  createdAt               DateTime           @default(now())
+  updatedAt               DateTime           @updatedAt
+
+  vendorOrders            VendorOrder[]
+  payments                Payment[]
+
+  @@index([customerId])
+  @@map("orders")
+}
+
+model VendorOrder {
+  id                      String            @id @default(cuid())
+  subOrderNumber          String            @unique
+  orderId                 String
+  order                   Order             @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  vendorId                String
+  vendor                  Vendor            @relation(fields: [vendorId], references: [id], onDelete: Restrict)
+  subtotalMinor           Int
+  commissionRateBps       Int
+  platformCommissionMinor Int
+  vendorPayoutMinor       Int
+  status                  VendorOrderStatus @default(PENDING_CONFIRMATION)
+  createdAt               DateTime          @default(now())
+  updatedAt               DateTime          @updatedAt
+
+  items                   OrderItem[]
+  delivery                Delivery?
+  commissionRecord        CommissionRecord?
+
+  @@index([orderId])
+  @@index([vendorId])
+  @@map("vendor_orders")
+}
+
+model OrderItem {
+  id              String      @id @default(cuid())
+  vendorOrderId   String
+  vendorOrder     VendorOrder @relation(fields: [vendorOrderId], references: [id], onDelete: Cascade)
+  productId       String?
+  product         Product?    @relation(fields: [productId], references: [id], onDelete: SetNull)
+  titleSnapshot   String
+  skuSnapshot     String
+  unitPriceMinor  Int
+  quantity        Int
+  totalPriceMinor Int
+  createdAt       DateTime    @default(now())
+
+  reviews         Review[]
+
+  @@index([vendorOrderId])
+  @@map("order_items")
+}
+
+model Delivery {
+  id                 String                  @id @default(cuid())
+  vendorOrderId      String                  @unique
+  vendorOrder        VendorOrder             @relation(fields: [vendorOrderId], references: [id], onDelete: Cascade)
+  deliveryPartnerId  String?
+  deliveryPartner    DeliveryPartnerProfile? @relation(fields: [deliveryPartnerId], references: [id], onDelete: SetNull)
+  trackingCode       String                  @unique
+  status             DeliveryState           @default(PENDING_ASSIGNMENT)
+  recipientName      String
+  deliveryAddress    String
+  recipientPhone     String
+  pickupTimestamp    DateTime?
+  deliveredTimestamp DateTime?
+  failureReason      String?
+  createdAt          DateTime                @default(now())
+  updatedAt          DateTime                @updatedAt
+
+  history            DeliveryStatusHistory[]
+
+  @@index([deliveryPartnerId])
+  @@map("deliveries")
+}
+
+model DeliveryStatusHistory {
+  id         String        @id @default(cuid())
+  deliveryId String
+  delivery   Delivery      @relation(fields: [deliveryId], references: [id], onDelete: Cascade)
+  status     DeliveryState
+  note       String?
+  createdAt  DateTime      @default(now())
+
+  @@index([deliveryId])
+  @@map("delivery_status_histories")
+}
+
+model CommissionRecord {
+  id                    String      @id @default(cuid())
+  vendorOrderId         String      @unique
+  vendorOrder           VendorOrder @relation(fields: [vendorOrderId], references: [id], onDelete: Cascade)
+  grossAmountMinor      Int
+  commissionRateBps     Int
+  commissionAmountMinor Int
+  netVendorAmountMinor  Int
+  isSettled             Boolean     @default(false)
+  settledAt             DateTime?
+  createdAt             DateTime    @default(now())
+
+  @@map("commission_records")
+}
+
+model Payment {
+  id                String        @id @default(cuid())
+  orderId           String
+  order             Order         @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  provider          String        @default("MOCK")
+  providerPaymentId String?       @unique
+  providerSignature String?
+  amountMinor       Int
+  currency          String        @default("INR")
+  status            PaymentStatus @default(PENDING)
+  failureReason     String?
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+
+  events            PaymentEvent[]
+
+  @@index([orderId])
+  @@map("payments")
+}
+
+model PaymentEvent {
+  id          String   @id @default(cuid())
+  paymentId   String
+  payment     Payment  @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  eventId     String   @unique
+  eventType   String
+  payload     Json
+  processedAt DateTime @default(now())
+
+  @@map("payment_events")
+}
+
+model Review {
+  id                 String     @id @default(cuid())
+  productId          String
+  product            Product    @relation(fields: [productId], references: [id], onDelete: Cascade)
+  customerId         String
+  customer           User       @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  orderItemId        String?
+  orderItem          OrderItem? @relation(fields: [orderItemId], references: [id], onDelete: SetNull)
+  rating             Int        // 1-5
+  comment            String
+  isVerifiedPurchase Boolean    @default(true)
+  isApproved         Boolean    @default(true)
+  createdAt          DateTime   @default(now())
+
+  @@unique([productId, customerId])
+  @@map("reviews")
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  actorId    String?
+  user       User?    @relation(fields: [actorId], references: [id], onDelete: SetNull)
+  actorRole  Role?
+  action     String
+  entityName String
+  entityId   String
+  ipAddress  String?
+  userAgent  String?
+  metadata   Json?
+  createdAt  DateTime @default(now())
+
+  @@index([entityName, entityId])
+  @@map("audit_logs")
+}

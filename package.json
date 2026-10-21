@@ -1,0 +1,39 @@
+{
+  "name": "markethub",
+  "version": "1.0.0",
+  "description": "MarketHub — Scalable Multi-Vendor E-Commerce Marketplace",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "npm run dev:api",
+    "dev:all": "concurrently \"npm run dev:api\" \"npm run dev:web\"",
+    "dev:api": "npm --workspace=apps/api run start:dev",
+    "dev:web": "npm --workspace=apps/web run dev",
+    "build": "npm run build --workspaces",
+    "build:shared": "npm --workspace=packages/shared run build",
+    "build:api": "npm --workspace=apps/api run build",
+    "build:web": "npm --workspace=apps/web run build",
+    "test:api": "npm --workspace=apps/api run test",
+    "prisma:generate": "npm --workspace=apps/api run prisma:generate",
+    "prisma:migrate": "npm --workspace=apps/api run prisma:migrate",
+    "prisma:seed": "npm --workspace=apps/api run prisma:seed"
+  },
+  "keywords": [
+    "ecommerce",
+    "multi-vendor",
+    "marketplace",
+    "nestjs",
+    "nextjs",
+    "prisma",
+    "postgresql",
+    "redis"
+  ],
+  "author": "Antigravity Engineering",
+  "license": "MIT",
+  "devDependencies": {
+    "concurrently": "^10.0.6"
+  }
+}
